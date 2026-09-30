@@ -115,7 +115,8 @@ def test_sample_fixture_is_labelled_fictional_and_matches_embedded_copy():
     fixture = json.loads((_HERE / "kalshi_predictit_arb_sample.json").read_text(encoding="utf-8"))
     assert fixture == arb.SAMPLE_RESPONSE
     assert "NOT real market data" in fixture["_notice"]
-    assert all(row["pair"].startswith("SAMPLE") for row in fixture["opportunities"])
+    assert all(row["event"].startswith("SAMPLE") for row in fixture["opportunities"])
+    assert fixture["opportunities"][0]["kalshi"]["ticker"] == "SAMPLE-SENATEXX-26-D"
 
 
 def test_defaults():
@@ -147,6 +148,31 @@ async def test_demo_mode_all_filters_and_missing_fields(no_network):
     assert len(await _source(mode="all", limit=1).fetch_async()) == 1
     with pytest.raises(ValueError):
         await _source(mode="bogus").fetch_async()
+
+
+async def _titles(rows):
+    source = _source()
+
+    async def scan():
+        return {"opportunities": rows}
+
+    source.scan = scan
+    return [r["title"] for r in await source.fetch_async()]
+
+
+@pytest.mark.asyncio
+async def test_event_is_preferred_over_pair():
+    assert await _titles([{"event": "E", "pair": "P"}]) == ["E"]
+
+
+@pytest.mark.asyncio
+async def test_pair_is_used_when_event_is_missing():
+    assert await _titles([{"pair": "P"}]) == ["P"]
+
+
+@pytest.mark.asyncio
+async def test_rows_without_event_or_pair_are_skipped():
+    assert await _titles([{"executable": True}, {"event": "", "pair": None}, {"event": " "}]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +208,8 @@ async def test_preview_data_source_normalizes_records(no_network):
     assert first["tags"] == ["kalshi", "predictit", "arbitrage", "sample"]
     assert first["payload"]["sample_data"] is True
     assert first["payload"]["net_yield_c"] == 3.1 and first["payload"]["executable"] is True
-    assert first["payload"]["best_direction"] == {"net_yield_c": 3.1, "net_yield_pct": 3.4}
+    assert first["payload"]["best_direction"]["net_yield_c"] == 3.1
+    assert first["payload"]["best_direction"]["net_yield_pct"] == 3.4
     assert len({r["external_id"] for r in preview["records"]}) == 5
 
 
